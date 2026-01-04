@@ -1,6 +1,6 @@
 # Dart JSON Generator VS Code Extension
 
-<img src="icon.png" width="128" height="128" alt="Dart JSON Generator Icon" align="right" />
+<img src="icon.jpg" width="128" height="128" alt="Dart JSON Generator Icon" align="right" />
 
 VS Code extension for generating Dart JSON serialization code using `dart_json_annotations`.
 
