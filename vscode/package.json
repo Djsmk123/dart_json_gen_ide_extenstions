@@ -3,7 +3,7 @@
   "displayName": "Dart JSON Generator",
   "description": "Generate Dart JSON serialization code from @Model annotations",
   "version": "1.0.0",
-  "publisher": "dart-json-annotations",
+  "publisher": "Smkwinner",
   "license": "MIT",
   "keywords": [
     "dart",
