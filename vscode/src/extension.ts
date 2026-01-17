@@ -6,7 +6,27 @@ import * as fs from 'fs';
 
 const execAsync = promisify(exec);
 
+type ExtensionSettings = {
+    autoRefresh: boolean;
+    showNotifications: boolean;
+    verboseOutput: boolean;
+};
+
+type TargetResolution = {
+    targetPath: string;
+    isFile: boolean;
+};
+
 let outputChannel: vscode.OutputChannel;
+
+function getExtensionSettings(): ExtensionSettings {
+    const config = vscode.workspace.getConfiguration('dartJsonGen');
+    return {
+        autoRefresh: config.get<boolean>('autoRefresh', true),
+        showNotifications: config.get<boolean>('showNotifications', true),
+        verboseOutput: config.get<boolean>('verboseOutput', false)
+    };
+}
 
 /**
  * Read dart_json_gen configuration file to get custom extension
@@ -45,6 +65,65 @@ function readConfigExtension(startPath: string): string {
     }
 
     return '.gen.dart'; // Default extension
+}
+
+function resolveTargetPath(
+    uri?: vscode.Uri,
+    type: 'file' | 'folder' = 'folder'
+): TargetResolution | null {
+    let targetPath: string;
+
+    if (uri) {
+        targetPath = uri.fsPath;
+    } else {
+        const activeEditor = vscode.window.activeTextEditor;
+        if (activeEditor) {
+            targetPath = type === 'file'
+                ? activeEditor.document.fileName
+                : path.dirname(activeEditor.document.fileName);
+        } else {
+            const workspaceFolders = vscode.workspace.workspaceFolders;
+            if (!workspaceFolders || workspaceFolders.length === 0) {
+                vscode.window.showErrorMessage('No workspace folder found');
+                return null;
+            }
+            targetPath = workspaceFolders[0].uri.fsPath;
+        }
+    }
+
+    if (!fs.existsSync(targetPath)) {
+        vscode.window.showErrorMessage(`Path does not exist: ${targetPath}`);
+        return null;
+    }
+
+    const stats = fs.statSync(targetPath);
+    const isFile = stats.isFile();
+
+    if (isFile && !targetPath.endsWith('.dart')) {
+        vscode.window.showWarningMessage('Please select a .dart file');
+        return null;
+    }
+
+    return { targetPath, isFile };
+}
+
+function getInputInfo(
+    targetPath: string,
+    isFile: boolean,
+    type: 'file' | 'folder'
+): { inputPath: string; displayName: string } {
+    if (type === 'file' && isFile) {
+        return {
+            inputPath: targetPath,
+            displayName: path.basename(targetPath)
+        };
+    }
+
+    const inputPath = isFile ? path.dirname(targetPath) : targetPath;
+    return {
+        inputPath,
+        displayName: path.basename(inputPath)
+    };
 }
 
 export function activate(context: vscode.ExtensionContext) {
@@ -96,61 +175,15 @@ export function activate(context: vscode.ExtensionContext) {
 
 async function generateCode(uri?: vscode.Uri, type: 'file' | 'folder' = 'folder') {
     try {
-        // Get configuration
-        const config = vscode.workspace.getConfiguration('dartJsonGen');
-        const autoRefresh = config.get<boolean>('autoRefresh', true);
-        const showNotifications = config.get<boolean>('showNotifications', true);
-        const verboseOutput = config.get<boolean>('verboseOutput', false);
+        const { autoRefresh, showNotifications, verboseOutput } = getExtensionSettings();
 
-        // Get the target path
-        let targetPath: string;
-        
-        if (uri) {
-            targetPath = uri.fsPath;
-        } else {
-            // If no URI provided, use the active editor or workspace folder
-            const activeEditor = vscode.window.activeTextEditor;
-            if (activeEditor) {
-                targetPath = type === 'file' 
-                    ? activeEditor.document.fileName 
-                    : path.dirname(activeEditor.document.fileName);
-            } else {
-                const workspaceFolders = vscode.workspace.workspaceFolders;
-                if (!workspaceFolders || workspaceFolders.length === 0) {
-                    vscode.window.showErrorMessage('No workspace folder found');
-                    return;
-                }
-                targetPath = workspaceFolders[0].uri.fsPath;
-            }
-        }
-
-        // Check if path exists
-        if (!fs.existsSync(targetPath)) {
-            vscode.window.showErrorMessage(`Path does not exist: ${targetPath}`);
+        const targetResolution = resolveTargetPath(uri, type);
+        if (!targetResolution) {
             return;
         }
+        const { targetPath, isFile } = targetResolution;
 
-        // Determine if it's a file or directory
-        const stats = fs.statSync(targetPath);
-        const isFile = stats.isFile();
-
-        // Validate file type if it's a file
-        if (isFile && !targetPath.endsWith('.dart')) {
-            vscode.window.showWarningMessage('Please select a .dart file');
-            return;
-        }
-
-        // Determine input path based on type
-        let inputPath: string;
-        let displayName: string;
-        
-        if (type === 'file' && isFile) {
-            inputPath = targetPath;
-            displayName = path.basename(targetPath);
-        } else {
-            inputPath = isFile ? path.dirname(targetPath) : targetPath;
-            displayName = path.basename(inputPath);
-        }
+        const { inputPath, displayName } = getInputInfo(targetPath, isFile, type);
 
         if (verboseOutput) {
             outputChannel.appendLine(`[${new Date().toLocaleTimeString()}] Starting generation...`);
@@ -292,52 +325,16 @@ async function generateCode(uri?: vscode.Uri, type: 'file' | 'folder' = 'folder'
 
 async function cleanGeneratedFiles(uri?: vscode.Uri, type: 'file' | 'folder' = 'folder') {
     try {
-        // Get configuration
-        const config = vscode.workspace.getConfiguration('dartJsonGen');
-        const autoRefresh = config.get<boolean>('autoRefresh', true);
-        const showNotifications = config.get<boolean>('showNotifications', true);
-        const verboseOutput = config.get<boolean>('verboseOutput', false);
+        const { autoRefresh, showNotifications, verboseOutput } = getExtensionSettings();
 
-        // Get the target path
-        let targetPath: string;
-        
-        if (uri) {
-            targetPath = uri.fsPath;
-        } else {
-            const activeEditor = vscode.window.activeTextEditor;
-            if (activeEditor) {
-                targetPath = type === 'file' 
-                    ? activeEditor.document.fileName 
-                    : path.dirname(activeEditor.document.fileName);
-            } else {
-                const workspaceFolders = vscode.workspace.workspaceFolders;
-                if (!workspaceFolders || workspaceFolders.length === 0) {
-                    vscode.window.showErrorMessage('No workspace folder found');
-                    return;
-                }
-                targetPath = workspaceFolders[0].uri.fsPath;
-            }
-        }
-
-        // Check if path exists
-        if (!fs.existsSync(targetPath)) {
-            vscode.window.showErrorMessage(`Path does not exist: ${targetPath}`);
+        const targetResolution = resolveTargetPath(uri, type);
+        if (!targetResolution) {
             return;
         }
-
-        // Determine if it's a file or directory
-        const stats = fs.statSync(targetPath);
-        const isFile = stats.isFile();
-
-        // Validate file type if it's a file
-        if (isFile && !targetPath.endsWith('.dart')) {
-            vscode.window.showWarningMessage('Please select a .dart file');
-            return;
-        }
+        const { targetPath, isFile } = targetResolution;
+        const { inputPath, displayName } = getInputInfo(targetPath, isFile, type);
 
         // Determine input path and find generated files
-        let inputPath: string;
-        let displayName: string;
         let filesToDelete: string[] = [];
         
         // Get extension from config
@@ -353,11 +350,8 @@ async function cleanGeneratedFiles(uri?: vscode.Uri, type: 'file' | 'folder' = '
             if (fs.existsSync(genFilePath)) {
                 filesToDelete.push(genFilePath);
             }
-            displayName = path.basename(targetPath);
         } else {
             // For a folder, find all generated files recursively
-            inputPath = isFile ? path.dirname(targetPath) : targetPath;
-            displayName = path.basename(inputPath);
             filesToDelete = findGenDartFiles(inputPath, genExtension);
         }
 
