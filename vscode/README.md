@@ -32,6 +32,13 @@ VS Code extension for generating Dart JSON serialization code using `dart_json_a
 2. Package the extension: `vsce package`
 3. Install the `.vsix` file: `code --install-extension dart-json-gen-1.0.0.vsix`
 
+
+## Publish to marketplace
+
+1. Run `vsce publish`
+2. Follow the prompts to publish the extension to the marketplace
+3. The extension will be published to the marketplace and can be installed from the marketplace
+
 ## 📋 Prerequisites
 
 - **Dart SDK** installed
